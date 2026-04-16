@@ -2,60 +2,96 @@ const Goal = require('../models/Goal');
 const Review = require('../models/Review');
 const User = require('../models/User');
 
+// ── Internal helper used by getCompanyAggregations ───────────────────────────
+const calculateAggregations = async (type) => {
+  const results = await Goal.aggregate([
+    { $match: { type } },
+    {
+      $group: {
+        _id: null,
+        count: { $sum: 1 },
+        avgCompletion: { $avg: '$completionPercentage' },
+        totalWeightage: { $sum: '$weightage' }
+      }
+    }
+  ]);
+  if (!results.length) return { count: 0, avgCompletion: 0, totalWeightage: 0 };
+  const r = results[0];
+  return {
+    count: r.count,
+    avgCompletion: r.avgCompletion ? Number(r.avgCompletion.toFixed(1)) : 0,
+    totalWeightage: r.totalWeightage ? Number(r.totalWeightage.toFixed(1)) : 0
+  };
+};
+
 // @desc    Get Admin Dashboard Stats & Pattern Detection (P0, P2)
 // @route   GET /api/admin/dashboard-stats
 const getDashboardStats = async (req, res) => {
   try {
-    // Run all top-level independent queries in parallel
+    // ── Step 1: run cheap count queries + flagged list in parallel ──────────
     const [totalReviews, closedReviews, flaggedReviews, activeProbations] = await Promise.all([
       Review.countDocuments(),
       Review.countDocuments({ status: 'Closed' }),
       Review.find({ isFlagged: true, status: { $ne: 'Closed' } })
+        .select('subjectId managerId type status selfFeedback managerFeedback contextNote flaggedAt dueDate createdAt')
         .populate('subjectId', 'name department')
-        .populate('managerId', 'name'),
+        .populate('managerId', 'name')
+        .lean(),
       User.countDocuments({ probationStatus: 'Active' })
     ]);
 
     const complianceRate = totalReviews > 0 ? (closedReviews / totalReviews) * 100 : 100;
 
-    // P2: Pattern Detection — fix N+1 by running all pastFlag lookups in parallel
-    const patternAlertsRaw = await Promise.all(
-      flaggedReviews
-        .filter(review => review.subjectId)
-        .map(review =>
-          Review.findOne({
-            subjectId: review.subjectId._id,
-            isFlagged: true,
-            _id: { $ne: review._id },
-            status: 'Closed'
-          }).then(pastFlag => (pastFlag ? { review, pastFlag } : null))
-        )
-    );
+    // ── Step 2: Pattern detection — single aggregation instead of N queries ──
+    // Collect unique subjectIds from flagged open reviews
+    const subjectIds = [...new Set(
+      flaggedReviews.filter(r => r.subjectId).map(r => r.subjectId._id.toString())
+    )];
 
-    const patternAlerts = patternAlertsRaw
-      .filter(Boolean)
-      .map(({ review, pastFlag }) => ({
-        subject: review.subjectId.name,
-        currentReview: {
-          type: review.type,
-          selfRating: review.selfFeedback?.rating,
-          selfProgress: review.selfFeedback?.progress,
-          managerRating: review.managerFeedback?.rating,
-          managerComments: review.managerFeedback?.comments,
-          contextNote: review.contextNote,
-          flaggedAt: review.flaggedAt
-        },
-        pastReview: {
-          type: pastFlag.type,
-          selfRating: pastFlag.selfFeedback?.rating,
-          selfProgress: pastFlag.selfFeedback?.progress,
-          managerRating: pastFlag.managerFeedback?.rating,
-          managerComments: pastFlag.managerFeedback?.comments,
-          contextNote: pastFlag.contextNote,
-          flaggedAt: pastFlag.flaggedAt
-        },
-        message: 'Consecutive Performance Flags Detected'
-      }));
+    // Fetch all closed+flagged reviews for those subjects in ONE query
+    const pastFlaggedMap = {};
+    if (subjectIds.length > 0) {
+      const pastFlags = await Review.find({
+        subjectId: { $in: subjectIds },
+        isFlagged: true,
+        status: 'Closed'
+      })
+        .select('subjectId type selfFeedback managerFeedback contextNote flaggedAt')
+        .lean();
+
+      pastFlags.forEach(pf => {
+        const sid = pf.subjectId.toString();
+        if (!pastFlaggedMap[sid]) pastFlaggedMap[sid] = pf; // keep first match
+      });
+    }
+
+    const patternAlerts = flaggedReviews
+      .filter(review => review.subjectId && pastFlaggedMap[review.subjectId._id.toString()])
+      .map(review => {
+        const pastFlag = pastFlaggedMap[review.subjectId._id.toString()];
+        return {
+          subject: review.subjectId.name,
+          currentReview: {
+            type: review.type,
+            selfRating: review.selfFeedback?.rating,
+            selfProgress: review.selfFeedback?.progress,
+            managerRating: review.managerFeedback?.rating,
+            managerComments: review.managerFeedback?.comments,
+            contextNote: review.contextNote,
+            flaggedAt: review.flaggedAt
+          },
+          pastReview: {
+            type: pastFlag.type,
+            selfRating: pastFlag.selfFeedback?.rating,
+            selfProgress: pastFlag.selfFeedback?.progress,
+            managerRating: pastFlag.managerFeedback?.rating,
+            managerComments: pastFlag.managerFeedback?.comments,
+            contextNote: pastFlag.contextNote,
+            flaggedAt: pastFlag.flaggedAt
+          },
+          message: 'Consecutive Performance Flags Detected'
+        };
+      });
 
     res.json({
       complianceRate: complianceRate.toFixed(1),

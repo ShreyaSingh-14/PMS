@@ -25,4 +25,10 @@ const goalSchema = new mongoose.Schema({
   parentGoalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Goal' }, // For Cascading (Company -> Team -> Individual)
 }, { timestamps: true });
 
+// ── Indexes for admin aggregation query performance ───────────────────────────
+// Used by getOrgAggregation + getCompanyAggregations: $match + $group on type
+goalSchema.index({ type: 1 });
+// Used by getOrgGoals populate
+goalSchema.index({ ownerId: 1 });
+
 module.exports = mongoose.model('Goal', goalSchema);

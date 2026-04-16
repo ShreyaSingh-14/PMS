@@ -9,7 +9,10 @@ connectDB();
 const app = express();
 
 // Middlewares
-app.use(cors());
+app.use(cors({
+  origin: process.env.CLIENT_URL || '*',
+  credentials: true,
+}));
 app.use(express.json());
 
 const setupSwagger = require('./config/swagger');
@@ -28,15 +31,25 @@ app.get('/', (req, res) => {
   res.send('PMS API is actively running.');
 });
 
-// Initialize Cron Jobs
-const scheduleProbationChecks = require('./services/probationCron');
-const scheduleReminderChecks = require('./services/reminderCron');
-const scheduleCycleTriggers = require('./services/cycleCron');
-scheduleProbationChecks();
-scheduleReminderChecks();
-scheduleCycleTriggers();
+// Initialize Cron Jobs only in non-serverless environments
+// Vercel is serverless — cron jobs won't persist there
+const isVercel = process.env.VERCEL === '1';
+if (!isVercel) {
+  const scheduleProbationChecks = require('./services/probationCron');
+  const scheduleReminderChecks = require('./services/reminderCron');
+  const scheduleCycleTriggers = require('./services/cycleCron');
+  scheduleProbationChecks();
+  scheduleReminderChecks();
+  scheduleCycleTriggers();
+}
 
-const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
-  console.log(`Server started on port ${PORT}`);
-});
+// For local development: start the HTTP server
+// For Vercel: export the app (Vercel handles the server)
+if (process.env.NODE_ENV !== 'production' || !isVercel) {
+  const PORT = process.env.PORT || 5001;
+  app.listen(PORT, () => {
+    console.log(`Server started on port ${PORT}`);
+  });
+}
+
+module.exports = app;

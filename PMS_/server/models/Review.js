@@ -38,4 +38,12 @@ const reviewSchema = new mongoose.Schema({
   }]
 }, { timestamps: true });
 
+// ── Indexes for admin dashboard query performance ─────────────────────────────
+// Used by getDashboardStats: { isFlagged: true, status: { $ne: 'Closed' } }
+reviewSchema.index({ isFlagged: 1, status: 1 });
+// Used by pattern detection: { subjectId, isFlagged: true, status: 'Closed' }
+reviewSchema.index({ subjectId: 1, isFlagged: 1, status: 1 });
+// Used by countDocuments({ status: 'Closed' })
+reviewSchema.index({ status: 1 });
+
 module.exports = mongoose.model('Review', reviewSchema);
