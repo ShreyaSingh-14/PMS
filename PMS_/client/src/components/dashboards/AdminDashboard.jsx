@@ -3,6 +3,16 @@ import { AlertTriangle, TrendingUp, Filter, FileText, Bell, CheckCircle, Setting
 import api from '../../api';
 import { useModal } from '../../context/ModalContext';
 
+// Helper: generate inline skeleton shimmer styles
+const skeletonStyle = (width, height, borderRadius = 4) => ({
+  width: typeof width === 'number' ? `${width}px` : width,
+  height: typeof height === 'number' ? `${height}px` : height,
+  borderRadius: typeof borderRadius === 'number' ? `${borderRadius}px` : borderRadius,
+  background: 'linear-gradient(90deg, rgba(4,102,69,0.06) 25%, rgba(4,102,69,0.1) 50%, rgba(4,102,69,0.06) 75%)',
+  backgroundSize: '200% 100%',
+  animation: 'shimmer 1.5s infinite',
+});
+
 // Helper: days between flaggedAt and now
 const getDaysSinceFlagged = (flaggedAt) => {
   if (!flaggedAt) return null;
