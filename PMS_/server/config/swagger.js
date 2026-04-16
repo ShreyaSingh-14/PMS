@@ -40,9 +40,17 @@ const options = {
 const swaggerSpec = swaggerJsdoc(options);
 
 const setupSwagger = (app) => {
+  // Use CDN for Vercel deployment where static assets often 404
+  const CSS_URL = "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui.min.css";
+  
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     customSiteTitle: "PMS Integration Docs",
     customCss: '.swagger-ui .topbar { display: none }',
+    customCssUrl: CSS_URL,
+    customJs: [
+      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui-bundle.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui-standalone-preset.js"
+    ]
   }));
   console.log(`Swagger Docs available at http://localhost:${process.env.PORT || 5001}/api/docs`);
 };
