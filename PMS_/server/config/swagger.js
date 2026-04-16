@@ -1,6 +1,8 @@
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 
+const path = require('path');
+
 const options = {
   definition: {
     openapi: '3.0.0',
@@ -11,8 +13,8 @@ const options = {
     },
     servers: [
       {
-        url: 'http://localhost:5001',
-        description: 'Local development server'
+        url: process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5001',
+        description: process.env.VERCEL_URL ? 'Production server (Vercel)' : 'Local development server'
       }
     ],
     components: {
@@ -28,7 +30,11 @@ const options = {
   },
   // We can explicitly outline paths through comments in controllers OR define them directly here.
   // Defining them directly here provides instant out-of-the-box completeness for MVP.
-  apis: ['./routes/*.js', './controllers/*.js']
+  // Use __dirname-based absolute paths for Vercel serverless environment
+  apis: [
+    path.join(__dirname, '../routes/*.js'),
+    path.join(__dirname, '../controllers/*.js')
+  ]
 };
 
 const swaggerSpec = swaggerJsdoc(options);
