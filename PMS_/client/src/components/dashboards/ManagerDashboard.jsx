@@ -7,21 +7,25 @@ const ManagerDashboard = () => {
   const [viewMode, setViewMode] = useState('Team'); // 'Team' (Coach) or 'Personal' (Player)
   const [teamGoals, setTeamGoals] = useState([]);
   const [pendingReviews, setPendingReviews] = useState([]);
+  const [teamAggregations, setTeamAggregations] = useState({ count: 0, avgCompletion: 0, totalWeightage: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchTeamData = async () => {
       try {
-        const [gRes, rRes] = await Promise.all([
+        const [gRes, rRes, aRes] = await Promise.all([
           api.get('/goals/team-goals'),
-          api.get('/reviews/pending')
+          api.get('/reviews/pending'),
+          api.get('/goals/team-aggregations')
         ]);
         setTeamGoals(Array.isArray(gRes.data) ? gRes.data : []);
         setPendingReviews(Array.isArray(rRes.data) ? rRes.data : []);
+        setTeamAggregations(aRes.data || { count: 0, avgCompletion: 0, totalWeightage: 0 });
       } catch (err) {
         console.error(err);
         setTeamGoals([]);
         setPendingReviews([]);
+        setTeamAggregations({ count: 0, avgCompletion: 0, totalWeightage: 0 });
       } finally {
         setLoading(false);
       }
@@ -32,7 +36,7 @@ const ManagerDashboard = () => {
   if (loading) return <div>Loading...</div>;
 
   const pendingApprovals = teamGoals.filter(g => g.status === 'Pending Approval');
-  const avgComp = teamGoals.length ? teamGoals.reduce((acc, g) => acc + (g.completionPercentage || 0), 0) / teamGoals.length : 0;
+  const teamCompletion = teamAggregations.avgCompletion || 0;
 
   return (
     <div className="animate-fade-in">
@@ -51,15 +55,15 @@ const ManagerDashboard = () => {
                 <span className="card-title">Team Goal Progress</span>
                 <Users className="sidebar-logo-icon" size={20} />
               </div>
-              <div className="card-value">{avgComp.toFixed(0)}%</div>
+              <div className="card-value">{teamCompletion.toFixed(0)}%</div>
               <div className="progress-container">
                 <div className="progress-bar-bg">
-                  <div className="progress-bar-fill" style={{ width: `${avgComp}%` }}></div>
+                  <div className="progress-bar-fill" style={{ width: `${teamCompletion}%` }}></div>
                 </div>
               </div>
               <div className="card-trend mt-2">
                 <TrendingUp size={16} className="trend-up" />
-                <span className="trend-up">Tracking on pace</span>
+                <span className="trend-up">{teamAggregations.count} Active Goals • {teamAggregations.totalWeightage}% Total Weight</span>
               </div>
             </div>
 

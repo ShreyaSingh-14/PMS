@@ -365,13 +365,13 @@ const LandingPage = ({ onNavigate }) => {
       {/* Resources Section with Subtle Theme Gradient */}
       <section id="resources" style={{
         padding: '4rem 4rem',
-        background: 'linear-gradient(135deg, #fff 0%, rgba(4, 102, 69, 0.03) 100%)',
+        background: 'linear-gradient(135deg, #f7fcf9 0%, rgba(4, 102, 69, 0.10) 65%, rgba(4, 102, 69, 0.14) 100%)',
         borderTop: '1px solid rgba(0,0,0,0.04)',
         position: 'relative',
         overflow: 'hidden'
       }}>
         {/* Decorative Background Blob */}
-        <div style={{ position: 'absolute', top: '10%', right: '-5%', width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(49,184,140,0.05) 0%, rgba(255,255,255,0) 70%)', zIndex: 0 }}></div>
+        <div style={{ position: 'absolute', top: '10%', right: '-5%', width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(49,184,140,0.12) 0%, rgba(255,255,255,0) 70%)', zIndex: 0 }}></div>
 
         <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
           <h2 className="section-title" style={{ marginBottom: '0.5rem' }}>Resources</h2>
@@ -379,28 +379,77 @@ const LandingPage = ({ onNavigate }) => {
 
           <div className="grid-container" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '2.5rem' }}>
             {[
-              { title: "The 2026 HR Playbook", desc: "A comprehensive guide to automating probation at scale with definitive legal-proof data.", tag: "GUIDE", icon: <FileText size={48} color="var(--accent-color)" /> },
-              { title: "GMS Best Practices", desc: "How to weight goals for maximal impact and org-wide visibility.", tag: "STRATEGY", icon: <Target size={48} color="var(--secondary-color)" /> },
-              { title: "API Documentation", desc: "Integrate PMS with your existing HRIS stack securely via REST.", tag: "TECH", icon: <Settings size={48} color="var(--text-secondary)" /> }
+              { 
+                title: "The 2026 HR Playbook", 
+                desc: "A comprehensive guide to automating probation at scale with definitive legal-proof data.", 
+                tag: "GUIDE",
+                bgGradient: 'linear-gradient(135deg, rgba(49,184,140,0.15) 0%, rgba(4,102,69,0.08) 100%)',
+                accentColor: 'var(--accent-color)',
+                content: (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                    <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>📘</div>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center', width: '100%' }}>
+                      <span style={{ background: 'rgba(49,184,140,0.2)', padding: '0.4rem 0.75rem', borderRadius: '0.4rem', fontSize: '0.7rem', fontWeight: 600, color: 'var(--accent-color)' }}>Automation</span>
+                      <span style={{ background: 'rgba(49,184,140,0.2)', padding: '0.4rem 0.75rem', borderRadius: '0.4rem', fontSize: '0.7rem', fontWeight: 600, color: 'var(--accent-color)' }}>Compliance</span>
+                      <span style={{ background: 'rgba(49,184,140,0.2)', padding: '0.4rem 0.75rem', borderRadius: '0.4rem', fontSize: '0.7rem', fontWeight: 600, color: 'var(--accent-color)' }}>Scale</span>
+                    </div>
+                  </div>
+                )
+              },
+              { 
+                title: "GMS Best Practices", 
+                desc: "How to weight goals for maximal impact and org-wide visibility.", 
+                tag: "STRATEGY",
+                bgGradient: 'linear-gradient(135deg, rgba(49,184,140,0.15) 0%, rgba(4,102,69,0.08) 100%)',
+                accentColor: 'var(--accent-color)',
+                content: (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
+                    <div style={{ fontSize: '2.5rem' }}>🎯</div>
+                    <div style={{ display: 'flex', gap: '0.4rem', flexDirection: 'column', width: '80%' }}>
+                      <div style={{ width: '100%', height: '6px', background: 'rgba(49,184,140,0.3)', borderRadius: '3px' }}><div style={{ width: '70%', height: '100%', background: 'var(--accent-color)', borderRadius: '3px' }}></div></div>
+                      <div style={{ width: '100%', height: '6px', background: 'rgba(49,184,140,0.3)', borderRadius: '3px' }}><div style={{ width: '50%', height: '100%', background: 'var(--accent-color)', borderRadius: '3px' }}></div></div>
+                      <div style={{ width: '100%', height: '6px', background: 'rgba(49,184,140,0.3)', borderRadius: '3px' }}><div style={{ width: '85%', height: '100%', background: 'var(--accent-color)', borderRadius: '3px' }}></div></div>
+                    </div>
+                  </div>
+                )
+              },
+              { 
+                title: "API Documentation", 
+                desc: "Integrate PMS with your existing HRIS stack securely via REST.", 
+                tag: "TECH",
+                bgGradient: 'linear-gradient(135deg, rgba(49,184,140,0.15) 0%, rgba(4,102,69,0.08) 100%)',
+                accentColor: 'var(--accent-color)',
+                content: (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.8rem' }}>
+                    <div style={{ fontSize: '2.8rem' }}>⚙️</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--accent-color)', fontWeight: 600, textAlign: 'center', lineHeight: 1.4 }}>
+                      <div>GET /api/goals</div>
+                      <div>POST /api/reviews</div>
+                      <div>PATCH /api/users</div>
+                    </div>
+                  </div>
+                )
+              }
             ].map((r, i) => (
               <div key={i} className="card h-hover" style={{
                 textAlign: 'left',
                 padding: '2.5rem',
-                border: '1px solid rgba(0,0,0,0.05)',
-                background: '#fff',
-                boxShadow: '0 10px 40px rgba(0,0,0,0.03)',
+                border: '1px solid rgba(4,102,69,0.08)',
+                background: 'linear-gradient(180deg, #fbfffe 0%, #ffffff 100%)',
+                boxShadow: '0 16px 45px rgba(0,0,0,0.05)',
                 display: 'flex',
                 flexDirection: 'column',
                 borderRadius: '1.5rem',
                 transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
               }}>
-                <div style={{ background: 'rgba(4,102,69,0.03)', height: '220px', borderRadius: '1rem', marginBottom: '1.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0,0,0,0.02)' }}>
-                  {r.icon}
+                <div style={{ background: r.bgGradient, height: '220px', borderRadius: '1rem', marginBottom: '1.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1.5px solid rgba(49,184,140,0.3)`, position: 'relative', overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', opacity: 0.05, width: '300px', height: '300px', background: 'radial-gradient(circle, var(--accent-color) 0%, transparent 70%)', top: '-50px', right: '-50px' }}></div>
+                  {r.content}
                 </div>
                 <span style={{ fontSize: '0.65rem', fontWeight: 900, color: 'var(--accent-color)', letterSpacing: '0.1em', marginBottom: '0.75rem' }}>{r.tag}</span>
                 <h4 style={{ fontSize: '1.35rem', fontWeight: 800, marginBottom: '0.75rem', letterSpacing: '-0.01em' }}>{r.title}</h4>
                 <p className="text-secondary" style={{ fontSize: '0.95rem', lineHeight: 1.6, flexGrow: 1 }}>{r.desc}</p>
-                <button className="btn btn-text" style={{ marginTop: '1.75rem', padding: 0, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>Learn More <ChevronRight size={16} /></button>
+                <button className="btn btn-text" style={{ marginTop: '1.75rem', padding: 0, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-color)' }}> Learn More <ChevronRight size={16} /></button>
               </div>
             ))}
           </div>

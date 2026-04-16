@@ -13,6 +13,7 @@ const GoalsGMS = ({ userRole }) => {
   // Forms
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [selectedGoalId, setSelectedGoalId] = useState(null);
   
   const fetchGoals = async () => {
     try {
@@ -126,6 +127,66 @@ const GoalsGMS = ({ userRole }) => {
     });
   };
 
+  const handleSubmitForApproval = async (goal) => {
+    try {
+      await api.patch(`/goals/${goal._id}`, { status: 'Pending Approval' });
+      await fetchGoals();
+      showAlert('Submitted for Review', 'Your goal has been submitted to your manager for approval.');
+      setSelectedGoalId(goal._id);
+    } catch (error) {
+      const msg = error.response?.data?.message || error.message || 'Error submitting goal';
+      showAlert('Submission Failed', msg);
+    }
+  };
+
+  const handleRecallToDraft = async (goal) => {
+    try {
+      await api.patch(`/goals/${goal._id}`, { status: 'Draft' });
+      await fetchGoals();
+      showAlert('Recalled to Draft', 'Your goal has been moved back to draft for updates.');
+      setSelectedGoalId(goal._id);
+    } catch (error) {
+      const msg = error.response?.data?.message || error.message || 'Error recalling goal';
+      showAlert('Update Failed', msg);
+    }
+  };
+
+  const handleEditDraft = async (goal) => {
+    showPrompt('Edit Goal Title', 'Update the goal title:', async (title) => {
+      if (!title || !title.trim()) return showAlert('Invalid Input', 'Title cannot be empty.');
+      showPrompt('Edit Deadline', 'Enter new deadline (YYYY-MM-DD), or leave blank:', async (deadline) => {
+        if (deadline && !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) {
+          return showAlert('Invalid Format', 'Please use YYYY-MM-DD format.');
+        }
+        try {
+          const payload = { title };
+          if (deadline && deadline.trim()) payload.deadline = deadline;
+          await api.patch(`/goals/${goal._id}`, payload);
+          await fetchGoals();
+          showAlert('Draft Updated', 'Your goal draft has been updated successfully.');
+          setSelectedGoalId(goal._id);
+        } catch (error) {
+          const msg = error.response?.data?.message || error.message || 'Error updating goal';
+          showAlert('Update Failed', msg);
+        }
+      }, goal.deadline ? new Date(goal.deadline).toISOString().slice(0, 10) : '');
+    }, goal.title);
+  };
+
+  const handleDeleteDraft = async (goal) => {
+    showConfirm('Delete Draft Goal', `Are you sure you want to delete "${goal.title}"? This action cannot be undone.`, async () => {
+      try {
+        await api.delete(`/goals/${goal._id}`);
+        await fetchGoals();
+        setSelectedGoalId(null);
+        showAlert('Draft Deleted', 'Your goal draft has been permanently deleted.');
+      } catch (error) {
+        const msg = error.response?.data?.message || error.message || 'Error deleting goal';
+        showAlert('Deletion Failed', msg);
+      }
+    });
+  };
+
   if (loading) return <div style={{padding: '2rem'}}>Initializing GMS Pipeline...</div>;
 
   if (userRole === 'Employee') {
@@ -148,17 +209,29 @@ const GoalsGMS = ({ userRole }) => {
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }}>My Growth Pipeline</h2>
             <p style={{color: 'var(--text-secondary)', fontSize: '0.9rem'}}>Complete subtasks to automatically advance your completion percentage.</p>
           </div>
-          <div style={{display: 'flex', alignItems: 'center', gap: '1.5rem'}}>
-            <div style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-end'}}>
-                <span style={{fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)'}}>ACTIVE WEIGHTAGE</span>
-                <span style={{fontSize: '1.25rem', fontWeight: 800, color: activeWeight === 100 ? 'var(--success-color)' : 'var(--warning-color)'}}>
-                    {activeWeight}% / 100%
-                </span>
+            <div style={{display: 'flex', alignItems: 'center', gap: '1.5rem'}}>
+              <div style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-end'}}>
+                  <span style={{fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)'}}>ACTIVE WEIGHTAGE</span>
+                  <span style={{
+                    fontSize: '1.25rem',
+                    fontWeight: 800,
+                    color: activeWeight === 100 ? 'var(--success-color)' : activeWeight > 100 ? 'var(--danger-color)' : 'var(--warning-color)',
+                    border: activeWeight !== 100 ? '2px solid currentColor' : 'none',
+                    borderRadius: '4px',
+                    padding: activeWeight !== 100 ? '2px 6px' : '0'
+                  }}>
+                      {activeWeight}% / 100%
+                      {activeWeight !== 100 && (
+                        <span style={{fontSize: '0.8rem', marginLeft: '4px'}}>
+                          {activeWeight > 100 ? '⚠️ OVER' : '⚠️ UNDER'}
+                        </span>
+                      )}
+                  </span>
+              </div>
+              <button className="btn btn-primary" onClick={() => setShowCreateForm(!showCreateForm)}>
+                  <PlusCircle size={16}/> New Draft
+              </button>
             </div>
-            <button className="btn btn-primary" onClick={() => setShowCreateForm(!showCreateForm)}>
-                <PlusCircle size={16}/> New Proposal
-            </button>
-          </div>
         </div>
 
         {showCreateForm && (
@@ -168,13 +241,14 @@ const GoalsGMS = ({ userRole }) => {
                 <input type="text" className="form-input" style={{flex: 1}} placeholder="Goal Title (e.g., Master React Server Components)..." value={newTitle} onChange={e => setNewTitle(e.target.value)} />
              </div>
              <div style={{display: 'flex', gap: '1rem'}}>
-                <button className="btn btn-primary" onClick={() => handleCreateGoal('Individual')}>Submit for Approval</button>
+                <button className="btn btn-primary" onClick={() => handleCreateGoal('Individual')}>Save Draft</button>
                 <button className="btn btn-outline" onClick={() => setShowCreateForm(false)}>Discard</button>
              </div>
           </div>
         )}
 
-        <div style={{display: 'flex', flexDirection: 'column', gap: '3rem'}}>
+        <div style={{display: 'grid', gridTemplateColumns: selectedGoalId ? '1.6fr 0.9fr' : '1fr', gap: '2rem'}}>
+          <div style={{display: 'flex', flexDirection: 'column', gap: '3rem'}}>
           <section className="phase-section">
             <div className="phase-header">
               <div className="phase-number pending">1</div>
@@ -182,12 +256,22 @@ const GoalsGMS = ({ userRole }) => {
               <span className="tag" style={{background: 'rgba(0,0,0,0.05)', color: 'var(--text-secondary)'}}>{phase1.length} Items</span>
             </div>
             <div className="list-group">
-              {phase1.length === 0 ? <p style={{fontSize: '0.9rem', color: 'var(--text-secondary)', padding: '1rem', border: '1px dashed #e2e8f0', borderRadius: '0.75rem'}}>No pending proposals. Click "New Proposal" to start.</p> : phase1.map(goal => (
-                <div className="list-item" key={goal._id} style={{borderLeft: '4px solid var(--warning-color)'}}>
+              {phase1.length === 0 ? <p style={{fontSize: '0.9rem', color: 'var(--text-secondary)', padding: '1rem', border: '1px dashed #e2e8f0', borderRadius: '0.75rem'}}>No pending proposals. Click "New Draft" to start.</p> : phase1.map(goal => (
+                <div
+                  className="list-item"
+                  key={goal._id}
+                  onClick={() => setSelectedGoalId(goal._id)}
+                  style={{
+                    borderLeft: '4px solid var(--warning-color)',
+                    cursor: 'pointer',
+                    background: selectedGoalId === goal._id ? 'rgba(49,184,140,0.08)' : '#fff',
+                    transition: 'background 0.2s ease'
+                  }}
+                >
                   <div className="list-item-main">
                     <span className="list-item-title">{goal.title}</span>
                     <span className="list-item-desc">
-                      Status: {goal.status === 'Draft' ? <span className="tag tag-danger">Needs Revision (Draft)</span> : <span className="tag tag-warning">Awaiting Manager Review</span>}
+                      Status: {goal.status === 'Draft' ? <span className="tag tag-danger">Draft</span> : <span className="tag tag-warning">Pending Approval</span>}
                     </span>
                   </div>
                 </div>
@@ -263,6 +347,135 @@ const GoalsGMS = ({ userRole }) => {
               ))}
             </div>
           </section>
+          </div>
+
+          {selectedGoalId && (() => {
+            const selectedGoal = phase1.find(g => g._id === selectedGoalId);
+            return selectedGoal ? (
+              <aside style={{
+                padding: '1.5rem',
+                background: '#fff',
+                borderRadius: '1rem',
+                border: '1px solid var(--border-color)',
+                height: 'fit-content',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1rem',
+                position: 'sticky',
+                top: '2rem'
+              }}>
+                <div>
+                  <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem'}}>
+                    <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                      <span style={{fontSize: '0.65rem', fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-secondary)'}}>Status</span>
+                      <span className={`tag ${selectedGoal.status === 'Draft' ? 'tag-danger' : 'tag-warning'}`}>
+                        {selectedGoal.status}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setSelectedGoalId(null)}
+                      title="Close panel"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '0.25rem',
+                        borderRadius: '0.375rem',
+                        fontSize: '1.1rem',
+                        lineHeight: 1,
+                        transition: 'color 0.15s, background 0.15s'
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.background = 'none'; }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <h4 style={{fontSize: '1rem', fontWeight: 800, marginBottom: '0.5rem', color: 'var(--text-primary)'}}>{selectedGoal.title}</h4>
+                  <p style={{fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5}}>{selectedGoal.description || 'No description provided.'}</p>
+                </div>
+
+                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.02)', borderRadius: '0.5rem'}}>
+                  <div>
+                    <p style={{fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '0.25rem', textTransform: 'uppercase'}}>Deadline</p>
+                    <p style={{fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)'}}>
+                      {selectedGoal.deadline ? new Date(selectedGoal.deadline).toLocaleDateString() : 'Not set'}
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '0.25rem', textTransform: 'uppercase'}}>Weightage</p>
+                    <p style={{fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)'}}>
+                      {selectedGoal.weightage || '—'} {selectedGoal.weightage ? '%' : ''}
+                    </p>
+                  </div>
+                </div>
+
+                {selectedGoal.subtasks && selectedGoal.subtasks.length > 0 && (
+                  <div>
+                    <p style={{fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase'}}>Roadmap</p>
+                    <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem'}}>
+                      {selectedGoal.subtasks.filter(st => st).map(st => (
+                        <div key={st._id} style={{display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem'}}>
+                          <div style={{width: '4px', height: '4px', borderRadius: '50%', background: 'var(--accent-color)'}}></div>
+                          <span style={{color: 'var(--text-secondary)'}}>{st.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(0,0,0,0.05)'}}>
+                  {selectedGoal.status === 'Draft' && (
+                    <>
+                      <button 
+                        className="btn btn-primary" 
+                        style={{width: '100%', fontSize: '0.85rem'}}
+                        onClick={() => handleSubmitForApproval(selectedGoal)}
+                      >
+                        Submit for Approval
+                      </button>
+                      <button 
+                        className="btn btn-outline" 
+                        style={{width: '100%', fontSize: '0.85rem'}}
+                        onClick={() => handleEditDraft(selectedGoal)}
+                      >
+                        Reconsider & Update
+                      </button>
+                      <button 
+                        className="btn btn-outline" 
+                        style={{width: '100%', fontSize: '0.85rem', borderColor: 'var(--danger-color)', color: 'var(--danger-color)'}}
+                        onClick={() => handleDeleteDraft(selectedGoal)}
+                      >
+                        Delete Draft
+                      </button>
+                    </>
+                  )}
+                  {selectedGoal.status === 'Pending Approval' && (
+                    <>
+                      <button 
+                        className="btn btn-outline" 
+                        style={{width: '100%', fontSize: '0.85rem', borderColor: 'var(--danger-color)', color: 'var(--danger-color)'}}
+                        onClick={() => handleRecallToDraft(selectedGoal)}
+                      >
+                        Recall for Revision
+                      </button>
+                      <button 
+                        className="btn btn-text" 
+                        style={{width: '100%', fontSize: '0.85rem'}}
+                        onClick={() => showAlert('Manager Notification', 'A reminder has been sent to your manager.')}
+                      >
+                        Ping Manager
+                      </button>
+                    </>
+                  )}
+                </div>
+              </aside>
+            ) : null;
+          })()}
         </div>
       </div>
     );
