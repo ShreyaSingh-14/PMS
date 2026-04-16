@@ -19,7 +19,20 @@ const getReviewHistory = async (req, res) => {
       $or: [{ subjectId: req.user._id }, { managerId: req.user._id }],
       status: 'Closed'
     }).populate('subjectId', 'name email').populate('managerId', 'name email');
-    res.json(reviews);
+
+    // Cross-share enforcement: employee only sees managerFeedback after they've
+    // submitted their own self-feedback. This covers edge cases like admin waivers.
+    const sanitized = reviews.map(rev => {
+      const obj = rev.toObject();
+      const isSubject = rev.subjectId?._id?.toString() === req.user._id.toString();
+      if (isSubject && !rev.selfFeedback?.submittedAt) {
+        delete obj.managerFeedback;
+        obj.crossShareBlocked = true; // Signal to UI to show "Pending your submission"
+      }
+      return obj;
+    });
+
+    res.json(sanitized);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -69,9 +82,10 @@ const submitSelfFeedback = async (req, res) => {
 const submitManagerFeedback = async (req, res) => {
   const { id } = req.params;
   const { comments, rating } = req.body;
+  const sendEmail = require('../utils/sendEmail');
 
   try {
-    const review = await Review.findById(id).populate('subjectId');
+    const review = await Review.findById(id).populate('subjectId').populate('managerId');
     if (!review) return res.status(404).json({ message: 'Review not found' });
 
     review.managerFeedback = { comments, rating, submittedAt: new Date() };
@@ -84,6 +98,14 @@ const submitManagerFeedback = async (req, res) => {
     }
 
     const updatedReview = await review.save();
+    
+    // P0: Cross-share email notification to employee
+    await sendEmail({
+      email: review.subjectId.email,
+      subject: `Your ${review.type} Feedback is Ready`,
+      html: `<p>Hi ${review.subjectId.name},</p><p>Your manager has completed their feedback for your ${review.type} review. Log in to view the feedback in your review history.</p><p>Rating: <strong>${rating}</strong></p>`
+    });
+    
     res.json(updatedReview);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -108,10 +130,125 @@ const scheduleDiscussion = async (req, res) => {
   }
 };
 
+// P1: Admin reassigns manager if unavailable
+const reassignReviewer = async (req, res) => {
+  const { reviewId, newReviewerId, reason } = req.body;
+  const sendEmail = require('../utils/sendEmail');
+  
+  try {
+    const review = await Review.findById(reviewId).populate('subjectId').populate('managerId');
+    if (!review) return res.status(404).json({ message: 'Review not found' });
+    
+    const newReviewer = await require('../models/User').findById(newReviewerId);
+    if (!newReviewer) return res.status(404).json({ message: 'Reviewer not found' });
+    
+    // Audit log entry
+    review.auditLog.push({
+      action: 'reassigned',
+      performedBy: req.user._id,
+      reason: reason || 'Manager unavailable',
+      timestamp: new Date(),
+      previousValue: { managerId: review.managerId },
+      newValue: { designatedReviewerId: newReviewerId }
+    });
+    
+    review.designatedReviewerId = newReviewerId;
+    await review.save();
+    
+    // Notify all parties
+    await sendEmail({
+      email: review.subjectId.email,
+      subject: 'Review Assignment Changed',
+      html: `<p>Your review has been reassigned to ${newReviewer.name} due to: ${reason}</p>`
+    });
+    
+    await sendEmail({
+      email: newReviewer.email,
+      subject: 'New Review Assignment',
+      html: `<p>You have been assigned to review ${review.subjectId.name}. Reason: ${reason}</p>`
+    });
+    
+    res.json({ message: 'Reviewer reassigned successfully', review });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// P1: Admin extends cycle deadline
+const extendReview = async (req, res) => {
+  const { reviewId, newDeadline, reason } = req.body;
+  
+  try {
+    const review = await Review.findById(reviewId).populate('subjectId');
+    if (!review) return res.status(404).json({ message: 'Review not found' });
+    
+    review.auditLog.push({
+      action: 'extended',
+      performedBy: req.user._id,
+      reason: reason || 'Admin extension',
+      timestamp: new Date(),
+      previousValue: { dueDate: review.dueDate },
+      newValue: { extensionGrantedUntil: newDeadline }
+    });
+    
+    review.extensionGrantedUntil = new Date(newDeadline);
+    review.status = 'Extended';
+    await review.save();
+    
+    const sendEmail = require('../utils/sendEmail');
+    await sendEmail({
+      email: review.subjectId.email,
+      subject: 'Review Deadline Extended',
+      html: `<p>Your review deadline has been extended to ${newDeadline}. Reason: ${reason}</p>`
+    });
+    
+    res.json({ message: 'Review extended successfully', review });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// P1: Admin waives review
+const waiveReview = async (req, res) => {
+  const { reviewId, reason } = req.body;
+  
+  try {
+    const review = await Review.findById(reviewId).populate('subjectId');
+    if (!review) return res.status(404).json({ message: 'Review not found' });
+    
+    review.auditLog.push({
+      action: 'waived',
+      performedBy: req.user._id,
+      reason: reason || 'Admin waiver',
+      timestamp: new Date(),
+      previousValue: { status: review.status },
+      newValue: { status: 'Waived' }
+    });
+    
+    review.status = 'Waived';
+    review.waiverReason = reason;
+    await review.save();
+    
+    const sendEmail = require('../utils/sendEmail');
+    await sendEmail({
+      email: review.subjectId.email,
+      subject: 'Review Waived',
+      html: `<p>Your review has been waived. Reason: ${reason}</p>`
+    });
+    
+    res.json({ message: 'Review waived successfully', review });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getPendingReviews,
   getReviewHistory,
   submitSelfFeedback,
   submitManagerFeedback,
-  scheduleDiscussion
+  scheduleDiscussion,
+  reassignReviewer,
+  extendReview,
+  waiveReview
 };

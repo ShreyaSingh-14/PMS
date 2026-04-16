@@ -3,6 +3,7 @@ const router = express.Router();
 const { 
   getDashboardStats, 
   getOrgAggregation, 
+  getCompanyAggregations,
   getOrgGoals,
   getMonthOverMonth, 
   exportCSV, 
@@ -50,6 +51,20 @@ router.route('/dashboard-stats').get(protect, admin, getDashboardStats);
  *         description: Successfully fetched aggregations
  */
 router.route('/org-aggregation').get(protect, admin, getOrgAggregation);
+
+/**
+ * @swagger
+ * /api/admin/company-aggregations:
+ *   get:
+ *     summary: Get company-wide goal aggregations with weighted averages
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully fetched company aggregations
+ */
+router.route('/company-aggregations').get(protect, admin, getCompanyAggregations);
 
 /**
  * @swagger

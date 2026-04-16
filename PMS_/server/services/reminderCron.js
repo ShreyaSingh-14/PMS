@@ -88,6 +88,38 @@ const scheduleReminderChecks = () => {
                 console.log(`Goal for ${goal.ownerId.name} auto-escalated to Admin.`);
             }
         }
+
+        // 4. Flag Aging Escalation: no Admin action for 7+ days → auto-escalate
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        const agedFlags = await Review.find({
+            isFlagged: true,
+            flagActionTaken: false,
+            flaggedAt: { $exists: true, $lte: sevenDaysAgo },
+            $or: [
+                { contextNote: { $exists: false } },
+                { contextNote: null },
+                { contextNote: { $not: { $regex: 'AUTO-ESCALATED', $options: 'i' } } }
+            ]
+        }).populate('subjectId');
+
+        for (let flagged of agedFlags) {
+            // Stamp the contextNote so this review won't trigger again tomorrow
+            flagged.contextNote = (flagged.contextNote ? flagged.contextNote + ' | ' : '') +
+                `AUTO-ESCALATED: No admin action taken for 7+ days (since ${new Date(flagged.flaggedAt).toDateString()}).`;
+            await flagged.save();
+
+            for (let admin of admins) {
+                await sendEmail({
+                    email: admin.email,
+                    subject: `URGENT: Unresolved Flag 7+ Days — ${flagged.subjectId?.name}`,
+                    html: `<p>The <strong>${flagged.type}</strong> review for <strong>${flagged.subjectId?.name}</strong> was flagged on <strong>${new Date(flagged.flaggedAt).toDateString()}</strong> and has had <strong>no admin action for 7+ days</strong>.</p><p>Please log in immediately to waive, extend, or escalate this flag.</p>`
+                });
+            }
+            console.log(`Auto-escalated aged flag for ${flagged.subjectId?.name} (flagged ${flagged.flaggedAt?.toDateString()})`);
+        }
+
     });
 };
 

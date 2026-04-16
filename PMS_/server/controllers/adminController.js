@@ -6,41 +6,61 @@ const User = require('../models/User');
 // @route   GET /api/admin/dashboard-stats
 const getDashboardStats = async (req, res) => {
   try {
-    const totalReviews = await Review.countDocuments();
-    const closedReviews = await Review.countDocuments({ status: 'Closed' });
+    // Run all top-level independent queries in parallel
+    const [totalReviews, closedReviews, flaggedReviews, activeProbations] = await Promise.all([
+      Review.countDocuments(),
+      Review.countDocuments({ status: 'Closed' }),
+      Review.find({ isFlagged: true, status: { $ne: 'Closed' } })
+        .populate('subjectId', 'name department')
+        .populate('managerId', 'name'),
+      User.countDocuments({ probationStatus: 'Active' })
+    ]);
+
     const complianceRate = totalReviews > 0 ? (closedReviews / totalReviews) * 100 : 100;
 
-    const flaggedReviews = await Review.find({ isFlagged: true, status: { $ne: 'Closed' } })
-      .populate('subjectId', 'name department')
-      .populate('managerId', 'name');
+    // P2: Pattern Detection — fix N+1 by running all pastFlag lookups in parallel
+    const patternAlertsRaw = await Promise.all(
+      flaggedReviews
+        .filter(review => review.subjectId)
+        .map(review =>
+          Review.findOne({
+            subjectId: review.subjectId._id,
+            isFlagged: true,
+            _id: { $ne: review._id },
+            status: 'Closed'
+          }).then(pastFlag => (pastFlag ? { review, pastFlag } : null))
+        )
+    );
 
-    // P2: Pattern Detection (Repeat flag alerts across consecutive cycles)
-    const patternAlerts = [];
-    for (let review of flaggedReviews) {
-      if (!review.subjectId) continue;
-      // Find if this subject had a previously FLAGGED review
-      const pastFlag = await Review.findOne({ 
-        subjectId: review.subjectId._id, 
-        isFlagged: true, 
-        _id: { $ne: review._id },
-        status: 'Closed'
-      });
-      if (pastFlag) {
-        patternAlerts.push({
-          subject: review.subjectId.name,
-          currentReview: review.type,
-          pastReview: pastFlag.type,
-          message: 'Consecutive Performance Flags Detected'
-        });
-      }
-    }
-
-    const activeProbations = await User.countDocuments({ probationStatus: 'Active' });
+    const patternAlerts = patternAlertsRaw
+      .filter(Boolean)
+      .map(({ review, pastFlag }) => ({
+        subject: review.subjectId.name,
+        currentReview: {
+          type: review.type,
+          selfRating: review.selfFeedback?.rating,
+          selfProgress: review.selfFeedback?.progress,
+          managerRating: review.managerFeedback?.rating,
+          managerComments: review.managerFeedback?.comments,
+          contextNote: review.contextNote,
+          flaggedAt: review.flaggedAt
+        },
+        pastReview: {
+          type: pastFlag.type,
+          selfRating: pastFlag.selfFeedback?.rating,
+          selfProgress: pastFlag.selfFeedback?.progress,
+          managerRating: pastFlag.managerFeedback?.rating,
+          managerComments: pastFlag.managerFeedback?.comments,
+          contextNote: pastFlag.contextNote,
+          flaggedAt: pastFlag.flaggedAt
+        },
+        message: 'Consecutive Performance Flags Detected'
+      }));
 
     res.json({
       complianceRate: complianceRate.toFixed(1),
       flaggedQueue: flaggedReviews.length,
-      patternAlerts, 
+      patternAlerts,
       flaggedDetails: flaggedReviews,
       pendingProbations: activeProbations
     });
@@ -53,17 +73,43 @@ const getDashboardStats = async (req, res) => {
 // @route   GET /api/admin/org-aggregation
 const getOrgAggregation = async (req, res) => {
   try {
-    const companyGoals = await Goal.find({ type: 'Company' });
-    const teamGoals = await Goal.find({ type: 'Team' });
-    const individualGoals = await Goal.find({ type: 'Individual' });
+    // Single aggregation pipeline instead of 3 separate queries
+    const results = await Goal.aggregate([
+      {
+        $group: {
+          _id: '$type',
+          count: { $sum: 1 },
+          avgCompletion: { $avg: '$completionPercentage' }
+        }
+      }
+    ]);
 
-    const calcAvg = (goals) => goals.length ? (goals.reduce((acc, g) => acc + g.completionPercentage, 0) / goals.length).toFixed(1) : 0;
-
-    res.json({
-      Company: { count: companyGoals.length, avgCompletion: calcAvg(companyGoals) },
-      Team: { count: teamGoals.length, avgCompletion: calcAvg(teamGoals) },
-      Individual: { count: individualGoals.length, avgCompletion: calcAvg(individualGoals) },
+    const dataMap = {
+      Company: { count: 0, avgCompletion: 0 },
+      Team: { count: 0, avgCompletion: 0 },
+      Individual: { count: 0, avgCompletion: 0 }
+    };
+    results.forEach(r => {
+      if (dataMap[r._id] !== undefined) {
+        dataMap[r._id] = {
+          count: r.count,
+          avgCompletion: r.avgCompletion ? Number(r.avgCompletion.toFixed(1)) : 0
+        };
+      }
     });
+
+    res.json(dataMap);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Company-wide goal aggregations
+// @route   GET /api/admin/company-aggregations
+const getCompanyAggregations = async (req, res) => {
+  try {
+    const aggregations = await calculateAggregations('Company');
+    res.json(aggregations);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -191,7 +237,8 @@ const handleReviewResolution = async (req, res) => {
     if (!review) return res.status(404).json({ message: 'Review not found' });
 
     if (hrNote) review.hrNote = hrNote;
-    review.hrResolved = true; // Mark as processed in weekly review queue
+    review.hrResolved = true;      // Mark as processed in weekly review queue
+    review.flagActionTaken = true;  // Prevents 7-day auto-escalation re-trigger
 
     if (action === 'Waive') {
       review.status = 'Closed';
@@ -224,6 +271,7 @@ const getOrgGoals = async (req, res) => {
 module.exports = {
   getDashboardStats,
   getOrgAggregation,
+  getCompanyAggregations,
   getOrgGoals,
   getMonthOverMonth,
   exportCSV,

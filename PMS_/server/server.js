@@ -19,6 +19,7 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/goals', require('./routes/goalRoutes'));
 app.use('/api/reviews', require('./routes/reviewRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/admin', require('./routes/adminCycleRoutes'));
 
 // Setup Swagger Docs
 setupSwagger(app);
